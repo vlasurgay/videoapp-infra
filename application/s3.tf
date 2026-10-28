@@ -1,8 +1,4 @@
-data "aws_caller_identity" "current" {}
-
 locals {
-  resource_prefix = "${var.project_name}-${var.environment}-${data.aws_caller_identity.current.account_id}"
-
   media_buckets = {
     uploads = {
       name    = "${local.resource_prefix}-uploads"
@@ -13,33 +9,7 @@ locals {
       purpose = "bucket for storing processed data"
     }
   }
-
-  video_preparation_queues = {
-    video_preparation = {
-      name    = "${local.resource_prefix}-video-preparation"
-      purpose = "queue dedicated to video preparation jobs"
-    }
-    video_preparation_dlq = {
-      name    = "${local.resource_prefix}-video-preparation-dlq"
-      purpose = "failed video preparation jobs"
-    }
-  }
 }
-
-provider "aws" {
-  region              = var.aws_region
-  allowed_account_ids = [var.expected_aws_account_id]
-
-  default_tags {
-    tags = {
-      Project     = var.project_name
-      ManagedBy   = "Terraform"
-      Environment = var.environment
-    }
-  }
-}
-
-# s3
 
 resource "aws_s3_bucket" "media" {
   for_each = local.media_buckets
@@ -133,8 +103,7 @@ resource "aws_s3_bucket_cors_configuration" "uploads" {
   }
 }
 
-data "aws_iam_policy_document" "media_bucket_tls" {
-  for_each = aws_s3_bucket.media
+data "aws_iam_policy_document" "media_bucket_tls_uploads" {
 
   statement {
     sid    = "DenyInsecureTransport"
@@ -143,8 +112,8 @@ data "aws_iam_policy_document" "media_bucket_tls" {
     actions = ["s3:*"]
 
     resources = [
-      each.value.arn,
-      "${each.value.arn}/*"
+      aws_s3_bucket.media["uploads"].arn,
+      "${aws_s3_bucket.media["uploads"].arn}/*"
     ]
 
     principals {
@@ -160,42 +129,81 @@ data "aws_iam_policy_document" "media_bucket_tls" {
   }
 }
 
-# sqs
+data "aws_iam_policy_document" "media_bucket_tls_processed" {
 
-resource "aws_s3_bucket_policy" "media" {
-  for_each = aws_s3_bucket.media
-  bucket   = each.value.id
+  statement {
+    sid    = "DenyInsecureTransport"
+    effect = "Deny"
 
-  policy = data.aws_iam_policy_document.media_bucket_tls[each.key].json
-}
+    actions = ["s3:*"]
 
-resource "aws_sqs_queue" "video_preparation_dlq" {
-  name                      = local.video_preparation_queues.video_preparation_dlq.name
-  message_retention_seconds = 1209600
+    resources = [
+      aws_s3_bucket.media["processed"].arn,
+      "${aws_s3_bucket.media["processed"].arn}/*"
+    ]
 
-  sqs_managed_sse_enabled = true
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
 
-  tags = {
-    Name    = local.video_preparation_queues.video_preparation_dlq.name
-    Purpose = local.video_preparation_queues.video_preparation_dlq.purpose
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+
+  statement {
+    sid    = "AllowCloudFrontReadProcessedMedia"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["cloudfront.amazonaws.com"]
+    }
+
+    actions = [
+      "s3:GetObject"
+    ]
+
+    resources = [
+      "${aws_s3_bucket.media["processed"].arn}/*"
+    ]
+
+    condition {
+      test     = "StringEquals"
+      variable = "AWS:SourceArn"
+      values   = [aws_cloudfront_distribution.media.arn]
+    }
   }
 }
 
-resource "aws_sqs_queue" "video_preparation" {
-  name = local.video_preparation_queues.video_preparation.name
+resource "aws_s3_bucket_policy" "media_policy_uploads" {
+  bucket = aws_s3_bucket.media["uploads"].id
+  policy = data.aws_iam_policy_document.media_bucket_tls_uploads.json
+}
 
-  visibility_timeout_seconds = 3600
-  message_retention_seconds  = 345600
-  receive_wait_time_seconds  = 20
-  sqs_managed_sse_enabled    = true
+resource "aws_s3_bucket_policy" "media_policy_processed" {
+  bucket = aws_s3_bucket.media["processed"].id
+  policy = data.aws_iam_policy_document.media_bucket_tls_processed.json
+}
 
-  redrive_policy = jsonencode({
-    deadLetterTargetArn = aws_sqs_queue.video_preparation_dlq.arn
-    maxReceiveCount     = 3
-  })
+resource "aws_s3_bucket_notification" "uploads" {
+  bucket = aws_s3_bucket.media["uploads"].id
 
-  tags = {
-    Name    = local.video_preparation_queues.video_preparation.name
-    Purpose = local.video_preparation_queues.video_preparation.purpose
+  queue {
+    id        = "video-multipart-upload-completed"
+    queue_arn = aws_sqs_queue.video_preparation_queue.arn
+
+    events = [
+      "s3:ObjectCreated:CompleteMultipartUpload"
+    ]
+
+    filter_prefix = "temp/uploads/"
   }
+
+  depends_on = [
+    aws_sqs_queue.video_preparation_queue
+  ]
 }

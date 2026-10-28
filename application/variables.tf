@@ -68,5 +68,34 @@ variable "ec2_root_volume_size" {
   }
 }
 
+variable "ai_mode_enabled" {
+  description = "run app whether with or without AI-tools. AI requires more paid resources"
+  type        = bool
+  default     = false
+}
 
+variable "db_name" {
+  description = "db postgres name"
+  type        = string
+  default     = "videoapp"
+}
 
+variable "db_user" {
+  description = "db postgres user"
+  type        = string
+  default     = "videoapp"
+}
+
+variable "db_password" {
+  description = "db password"
+  type        = string
+  sensitive   = true
+  ephemeral   = true
+  nullable    = false
+}
+
+variable "db_password_version" {
+  description = "should be incremented while updating password"
+  type        = number
+  default     = 1
+}
