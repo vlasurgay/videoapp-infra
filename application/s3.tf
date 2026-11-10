@@ -200,7 +200,7 @@ resource "aws_s3_bucket_notification" "uploads" {
       "s3:ObjectCreated:CompleteMultipartUpload"
     ]
 
-    filter_prefix = "temp/uploads/"
+    filter_prefix = "temporal/"
   }
 
   depends_on = [
