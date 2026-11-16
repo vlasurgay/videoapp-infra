@@ -80,6 +80,13 @@ data "aws_iam_policy_document" "github_actions_deploy" {
   for_each = local.repositories
 
   statement {
+    sid       = "FindDeploymentInstance"
+    effect    = "Allow"
+    actions   = ["ec2:DescribeInstances"]
+    resources = ["*"]
+  }
+
+  statement {
     sid    = "AuthenticateToECR"
     effect = "Allow"
 
@@ -157,6 +164,7 @@ data "aws_iam_policy_document" "github_actions_deploy" {
 
     resources = ["*"]
   }
+
 }
 
 resource "aws_iam_policy" "github_actions_deploy" {

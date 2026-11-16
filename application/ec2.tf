@@ -54,6 +54,8 @@ resource "aws_instance" "app" {
 
     systemctl enable --now docker
 
+    command -v aws >/dev/null || snap install aws-cli --classic
+
     mkdir -p /opt/videoapp
     chown ubuntu:ubuntu /opt/videoapp
   EOF
