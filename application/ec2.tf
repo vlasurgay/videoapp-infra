@@ -74,3 +74,17 @@ resource "aws_instance" "app" {
     ignore_changes = [ami]
   }
 }
+
+resource "aws_eip" "app" {
+  domain = "vpc"
+  tags   = { Name = "${local.resource_prefix}-eip" }
+}
+
+resource "aws_eip_association" "app" {
+  instance_id   = aws_instance.app.id
+  allocation_id = aws_eip.app.id
+}
+
+locals {
+  frontend_origins = distinct(concat(var.allowed_frontend_origins, ["http://${aws_eip.app.public_ip}"]))
+}

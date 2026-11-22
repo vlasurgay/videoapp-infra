@@ -44,7 +44,7 @@ output "app_instance_id" {
 
 output "app_public_ip" {
   description = "public ec2 instance ip"
-  value       = aws_instance.app.public_ip
+  value       = aws_eip.app.public_ip
 }
 
 #ssm
