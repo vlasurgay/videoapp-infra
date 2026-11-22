@@ -86,5 +86,12 @@ resource "aws_eip_association" "app" {
 }
 
 locals {
-  frontend_origins = distinct(concat(var.allowed_frontend_origins, ["http://${aws_eip.app.public_ip}"]))
+  frontend_origins = distinct(concat(
+    var.allowed_frontend_origins,
+    [
+      "http://${aws_eip.app.public_ip}",
+      "http://${aws_eip.app.public_dns}"
+    ]
+
+  ))
 }
